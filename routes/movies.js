@@ -1,10 +1,10 @@
 const express = require("express");
 const Router = express.Router();
 
-const { validateToken } = require('../auth/token_validator')
+const { validateAccessToken } = require('../auth/token_validator')
 const databasePool = require('../database/connection');
 
-Router.get("/list", validateToken, (req, res) => {
+Router.get("/list", validateAccessToken, (req, res) => {
     const requestBody = req.body;
     databasePool.query(
         `SELECT movie.moviename, 
@@ -29,7 +29,7 @@ Router.get("/list", validateToken, (req, res) => {
     });
 });
 
-Router.put("/add", validateToken, (req, res) => {
+Router.put("/add", validateAccessToken, (req, res) => {
     const requestBody = req.body;
     let concatenatedCast = "";
     requestBody.cast.forEach(c => {
@@ -55,15 +55,31 @@ Router.put("/add", validateToken, (req, res) => {
     });
 });
 
-Router.post("/edit", validateToken, (req, res) => {
-    // const requestBody = req.body;
-    // databasePool.query(
-    //     `UPDATE movie
-    //      SET `
-    // )
+Router.post("/edit", validateAccessToken, (req, res) => {
+    const requestBody = req.body;
+    databasePool.query(
+        `UPDATE movie
+         SET moviename='${requestBody.moviename.new}', rating='${requestBody.rating.new}', genre='${requestBody.genre.new}', releasedate='${requestBody.releasedate.new}'
+         WHERE username='${requestBody.username}' AND moviename='${requestBody.moviename.old}'`, 
+         (err, rows, fields) => {
+            if(!err) {
+                updateCast(req, res);
+                console.log(`Updated movie ${requestBody.moviename.old} for user ${requestBody.username}`);
+                res.status(200).send({
+                    status: "Success",
+                    info: rows
+                });
+            } else {
+                console.log(err);
+                res.status(500).send({
+                    status: "Error",
+                    message: err
+                });
+            }
+    });
 });
 
-Router.delete("/delete", validateToken, (req, res) => {
+Router.delete("/delete", validateAccessToken, (req, res) => {
     const requestBody = req.body;
     databasePool.query(
         `DELETE FROM movie WHERE username='${requestBody.username}' AND moviename='${requestBody.moviename}';
@@ -84,5 +100,31 @@ Router.delete("/delete", validateToken, (req, res) => {
         }
     });
 });
+
+function updateCast(request, response) {
+    request.body.cast.old.forEach(cast => {
+        databasePool.query(`DELETE FROM moviecast WHERE castname='${cast}' AND username='${request.body.moviename.new}'`, (err) => {
+            if(err) {
+                console.log(err);
+                response.status(500).send({
+                    status: "Error",
+                    message: err
+                });
+            }
+        });
+    });
+
+    request.body.cast.new.forEach(cast => {
+        databasePool.query(`INSERT INTO moviecast(castname, moviename, username) VALUES('${cast}','${request.body.moviename.new}','${request.body.username}')`, (err) => {
+            if(err) {
+                console.log(err);
+                response.status(500).send({
+                    status: "Error",
+                    message: err
+                });
+            }
+        });
+    });
+}
 
 module.exports = Router;

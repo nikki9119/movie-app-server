@@ -3,6 +3,7 @@ const { sign } = require('jsonwebtoken');
 const { genSaltSync, compareSync, hashSync } = require('bcrypt');
 
 const databasePool = require('../database/connection');
+const { validateRefreshToken, removeRefreshToken } = require("../auth/token_validator");
 
 const Router = express.Router();
 
@@ -61,13 +62,16 @@ Router.post("/login", (req, res) => {
             if(result) {
                 console.log(`Login successful for user ${username}`)
                 res.password = undefined;
-                const jsontoken = sign({ username: user.username }, process.env.ACCESS_TOKEN_SECRET, {
-                    expiresIn: "30m"
+                const accesstoken = sign({ username: user.username }, process.env.ACCESS_TOKEN_SECRET, {
+                    expiresIn: "10m"
                 });
+                const refreshtoken = sign({ username: user.username }, process.env.REFRESH_TOKEN_SECRET)
+                databasePool.query(`INSERT INTO tokens (username, token) VALUES ('${username}', '${refreshtoken}')`);
                 res.status(200).send({
                     status: "Success",
                     message: "Login successful",
-                    token: jsontoken
+                    authToken: accesstoken,
+                    refreshToken: refreshtoken
                 });
             } else {
                 res.status(401).send({
@@ -79,8 +83,22 @@ Router.post("/login", (req, res) => {
     }
 });
 
-Router.post("/logout", (req, res) => {
+Router.get("/token", validateRefreshToken, (req, res) => {
+    const accesstoken = sign({ username: req.body.username }, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "10m"
+    });
+    res.status(200).send({
+        status: "Success",
+        username: req.body.username,
+        accessToken: accesstoken
+    });
+});
 
+Router.post("/logout", removeRefreshToken, (req, res) => {
+    res.status(200).send({
+        status: "Success",
+        message: "Logout successful"
+    });
 });
 
 module.exports = Router;
